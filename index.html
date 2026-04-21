@@ -68,11 +68,13 @@
 
         .unscramble-container { display: flex; flex-direction: column; align-items: center; width: 100%; }
         .target-slots { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin: 20px 0; min-height: 65px; width: 95%; }
+        
         .slot {
             width: 50px; height: 60px; border: 3px dashed #ccc; border-radius: 10px;
             display: flex; align-items: center; justify-content: center; font-size: 1.8rem; font-weight: bold;
-            background: rgba(255,255,255,0.5);
+            background: rgba(255,255,255,0.5); cursor: default;
         }
+        .slot.filled { cursor: pointer; }
         .slot.space-slot { border: none; background: transparent; width: 30px; }
         
         .letter-pool { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; width: 95%; padding: 20px; background: #fdfdfd; border-radius: 20px; border: 2px solid #eee; }
@@ -105,12 +107,6 @@
     <button class="btn btn-small back-btn" onclick="showScreen('menu-screen')">BACK</button>
 
     <div id="menu-screen" class="screen active menu-bg">
-        <div class="pastel-bee" style="top:5%; left:5%; animation-delay: 0s;"></div>
-        <div class="pastel-bee" style="top:15%; right:10%; animation-delay: 1s;"></div>
-        <div class="pastel-bee" style="bottom:20%; left:15%; animation-delay: 2s;"></div>
-        <div class="pastel-bee" style="top:50%; right:5%; animation-delay: 3s;"></div>
-        <div class="pastel-bee" style="bottom:5%; right:20%; animation-delay: 4.5s;"></div>
-
         <h1>SPELLING BEE<br>CLASSROOM MASTER</h1>
         <button class="btn" onclick="openModeSelect('practice')">PRACTICE</button>
         <button class="btn" onclick="openModeSelect('duel')">TEAM DUEL</button>
@@ -194,8 +190,7 @@
         function openModeSelect(mode) { gameMode = mode; showScreen('mode-screen'); }
 
         function pickStudent(side) {
-            const input = document.getElementById('size-p'); 
-            const max = input ? input.value : 20;
+            const max = document.getElementById('size-p').value || 20;
             document.getElementById('num-' + side).innerText = Math.floor(Math.random() * max) + 1;
         }
 
@@ -212,16 +207,16 @@
             else { showScreen('duel-screen'); renderRound('l-play', 'l'); renderRound('r-play', 'r'); }
         }
 
-        function renderRound(containerId, side) {
+        function renderRound(containerId, side, clearDisplay = true) {
             const container = document.getElementById(containerId);
-            const currentText = document.getElementById(side + "-display")?.innerText || ""; // Save current typing
+            const currentText = clearDisplay ? "" : (document.getElementById(side + "-display")?.innerText || "");
             container.innerHTML = '';
             const word = currentWords[wordIndex];
 
             if(gameStyle === 'spell') {
                 const display = document.createElement('div');
                 display.id = side + "-display"; display.className = "display-area";
-                display.innerText = currentText; // Restore saved text
+                display.innerText = currentText;
                 container.appendChild(display);
                 renderKeyboard(container, side);
             } else {
@@ -236,6 +231,10 @@
             targetDiv.className = "target-slots";
             targetDiv.id = side + "-target";
 
+            const poolDiv = document.createElement('div');
+            poolDiv.className = "letter-pool";
+            poolDiv.id = side + "-pool";
+
             for(let char of word) {
                 const slot = document.createElement('div');
                 if(char === " ") {
@@ -243,17 +242,28 @@
                     slot.innerText = " ";
                 } else {
                     slot.className = "slot";
-                    slot.dataset.expected = char;
+                    // NEW: Click a slot to remove letter
+                    slot.onclick = () => {
+                        if(isWaitingForNext || !slot.innerText) return;
+                        const letter = slot.innerText;
+                        const tileId = slot.dataset.tileId;
+                        const originalTile = document.getElementById(tileId);
+                        if(originalTile) originalTile.style.visibility = "visible";
+                        
+                        slot.innerText = "";
+                        slot.style.background = "rgba(255,255,255,0.5)";
+                        slot.style.border = "3px dashed #ccc";
+                        slot.classList.remove('filled');
+                    };
                 }
                 targetDiv.appendChild(slot);
             }
 
-            const poolDiv = document.createElement('div');
-            poolDiv.className = "letter-pool";
             const letters = word.replace(/\s/g, '').split('').sort(() => Math.random() - 0.5);
-            letters.forEach(l => {
+            letters.forEach((l, index) => {
                 const tile = document.createElement('div');
                 tile.className = "tile";
+                tile.id = side + "-tile-" + index;
                 tile.innerText = l;
                 tile.onclick = () => {
                     if(isWaitingForNext) return;
@@ -261,8 +271,10 @@
                     for(let slot of emptySlots) {
                         if(!slot.innerText) {
                             slot.innerText = l;
+                            slot.dataset.tileId = tile.id; // Link slot to tile
                             slot.style.background = "var(--bee-yellow)";
                             slot.style.border = "3px solid black";
+                            slot.classList.add('filled');
                             tile.style.visibility = "hidden";
                             checkUnscrambleWin(side, word);
                             break;
@@ -272,14 +284,8 @@
                 poolDiv.appendChild(tile);
             });
 
-            const resetBtn = document.createElement('button');
-            resetBtn.className = "btn btn-small";
-            resetBtn.innerText = "RESET TILES";
-            resetBtn.onclick = () => { if(!isWaitingForNext) renderRound(container.id, side); };
-
             wrapper.appendChild(targetDiv);
             wrapper.appendChild(poolDiv);
-            wrapper.appendChild(resetBtn);
             container.appendChild(wrapper);
         }
 
@@ -312,7 +318,7 @@
             shift.onclick = () => { 
                 if(!isWaitingForNext) { 
                     isCaps = !isCaps; 
-                    renderRound(container.id, side); 
+                    renderRound(container.id, side, false); // Don't clear when shifting
                 } 
             };
             const space = document.createElement('div'); space.className = "key"; space.innerText = "SPACE"; space.style.width="120px"; space.onclick = () => handleInput(side, " ");
@@ -328,13 +334,10 @@
             if(isWaitingForNext) return;
             const display = document.getElementById(side + "-display");
             display.innerText += char;
-            
-            // Auto-turn off Shift after one letter (standard shift behavior)
             if(isCaps) {
                 isCaps = false;
-                renderRound(side === 'p' ? 'p-play' : side + '-play', side);
+                renderRound(side === 'p' ? 'p-play' : side + '-play', side, false);
             }
-
             if(display.innerText === currentWords[wordIndex]) {
                 display.classList.add('correct-flash');
                 handleWin();
@@ -356,8 +359,9 @@
                 alert("ALL PHRASES COMPLETE!"); 
                 showScreen('menu-screen'); 
             } else {
-                if(gameMode === 'practice') renderRound('p-play', 'p');
-                else { renderRound('l-play', 'l'); renderRound('r-play', 'r'); }
+                // Render with clearDisplay = true to wipe the board
+                if(gameMode === 'practice') renderRound('p-play', 'p', true);
+                else { renderRound('l-play', 'l', true); renderRound('r-play', 'r', true); }
             }
         }
 

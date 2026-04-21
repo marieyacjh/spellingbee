@@ -91,6 +91,7 @@
             font-weight: bold; font-size: 1.3rem; cursor: pointer; user-select: none;
             font-family: inherit;
         }
+        .key-active { background: var(--bee-yellow); transform: translateY(2px); box-shadow: none; }
 
         .duel-container { display: flex; width: 100vw; height: 75vh; }
         .team-side { flex: 1; display: flex; flex-direction: column; align-items: center; border: 1px solid #ddd; padding: 10px; overflow-y: auto; }
@@ -182,7 +183,7 @@
         let gameMode = 'practice';
         let gameStyle = 'spell';
         let isCaps = false;
-        let isWaitingForNext = false; // Prevents typing after word is finished
+        let isWaitingForNext = false;
         const qwerty = [["Q","W","E","R","T","Y","U","I","O","P"], ["A","S","D","F","G","H","J","K","L"], ["Z","X","C","V","B","N","M"]];
 
         function showScreen(id) {
@@ -213,12 +214,14 @@
 
         function renderRound(containerId, side) {
             const container = document.getElementById(containerId);
+            const currentText = document.getElementById(side + "-display")?.innerText || ""; // Save current typing
             container.innerHTML = '';
             const word = currentWords[wordIndex];
 
             if(gameStyle === 'spell') {
                 const display = document.createElement('div');
                 display.id = side + "-display"; display.className = "display-area";
+                display.innerText = currentText; // Restore saved text
                 container.appendChild(display);
                 renderKeyboard(container, side);
             } else {
@@ -287,10 +290,7 @@
                 if(s.classList.contains('space-slot')) attempt += " ";
                 else attempt += s.innerText || "";
             });
-            
-            if(attempt === word) {
-                handleWin();
-            }
+            if(attempt === word) handleWin();
         }
 
         function renderKeyboard(container, side) {
@@ -299,20 +299,28 @@
                 const rowDiv = document.createElement('div'); rowDiv.className = "kb-row";
                 row.forEach(l => {
                     const k = document.createElement('div'); k.className = "key";
-                    k.innerText = isCaps ? l : l.toLowerCase();
+                    k.innerText = isCaps ? l.toUpperCase() : l.toLowerCase();
                     k.onclick = () => handleInput(side, k.innerText);
                     rowDiv.appendChild(k);
                 });
                 kb.appendChild(rowDiv);
             });
             const row4 = document.createElement('div'); row4.className = "kb-row";
-            const caps = document.createElement('div'); caps.className = "key"; caps.innerText = "CAPS"; caps.onclick = () => { if(!isWaitingForNext) { isCaps = !isCaps; renderRound(container.id, side); } };
+            const shift = document.createElement('div'); 
+            shift.className = "key" + (isCaps ? " key-active" : ""); 
+            shift.innerText = "SHIFT"; 
+            shift.onclick = () => { 
+                if(!isWaitingForNext) { 
+                    isCaps = !isCaps; 
+                    renderRound(container.id, side); 
+                } 
+            };
             const space = document.createElement('div'); space.className = "key"; space.innerText = "SPACE"; space.style.width="120px"; space.onclick = () => handleInput(side, " ");
             const del = document.createElement('div'); del.className = "key"; del.innerText = "DEL"; del.onclick = () => {
                 if(isWaitingForNext) return;
                 const d = document.getElementById(side + "-display"); d.innerText = d.innerText.slice(0, -1);
             };
-            row4.appendChild(caps); row4.appendChild(space); row4.appendChild(del);
+            row4.appendChild(shift); row4.appendChild(space); row4.appendChild(del);
             kb.appendChild(row4); container.appendChild(kb);
         }
 
@@ -320,6 +328,13 @@
             if(isWaitingForNext) return;
             const display = document.getElementById(side + "-display");
             display.innerText += char;
+            
+            // Auto-turn off Shift after one letter (standard shift behavior)
+            if(isCaps) {
+                isCaps = false;
+                renderRound(side === 'p' ? 'p-play' : side + '-play', side);
+            }
+
             if(display.innerText === currentWords[wordIndex]) {
                 display.classList.add('correct-flash');
                 handleWin();
@@ -335,8 +350,8 @@
         function nextWord() {
             wordIndex++;
             isWaitingForNext = false;
+            isCaps = false;
             hideNextButtons();
-            
             if(wordIndex >= currentWords.length) { 
                 alert("ALL PHRASES COMPLETE!"); 
                 showScreen('menu-screen'); 
@@ -351,7 +366,6 @@
             document.getElementById('next-btn-duel').style.display = 'none';
         }
 
-        // --- Rest of original logic for save/history/load remains ---
         function saveWords() {
             const list = document.getElementById('word-input').value.split('\n').filter(x => x.trim());
             if(list.length) {
